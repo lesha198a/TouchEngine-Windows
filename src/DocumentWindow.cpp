@@ -623,6 +623,25 @@ DocumentWindow::linkLayoutDidChange()
 	myPendingLayoutChange = true;    
 }
 
+#define _USE_MATH_DEFINES
+#include <math.h>
+
+float* generate500HzSinusoid(int samples, int offset) {
+    if (samples <= 0) {
+        return nullptr;
+    }
+
+    auto* sinusoid = new float[samples];
+    float frequency = 500.0f;
+
+    for (int i = 0; i < samples; ++i) {
+        float t = static_cast<float>(i + offset) / 44100;
+        sinusoid[i] = std::sinf(2.0f * float(M_PI) * frequency * t);
+    }
+
+    return sinusoid;
+}
+
 void
 DocumentWindow::update()
 {
@@ -641,6 +660,7 @@ DocumentWindow::update()
 	{
 		changed = changed || applyOutputTextureChange();
 
+        int64_t time = getRenderTime();
 		// Examples of setting input links
 		TEStringArray* groups;
 		TEResult result = TEInstanceGetLinkGroups(myInstance, TEScopeInput, &groups);
@@ -702,24 +722,28 @@ DocumentWindow::update()
 									if (buffer)
 									{
 										auto copied = TEFloatBufferCreateCopy(buffer);
-										TERelease(&buffer);
-										buffer = copied;
-									}
-									else
-									{
-										// Two channels, capacity of one sample per channel, no channel names
-										// This buffer is not time-dependent, see TEFloatBuffer.h for handling time-dependent samples such
-										// as audio.
-										buffer = TEFloatBufferCreate(-1, 2, 1, nullptr);
-									}
-									float value = static_cast<float>(fmod(myLastFloatValue, 1.0));
-									std::array<const float*, 2> channels{ &value, &value };
-									TEFloatBufferSetValues(buffer, channels.data(), 1);
+                                        TERelease(&buffer);
+                                        buffer = copied;
+                                    } else {
+                                        // Two channels, capacity of one sample per channel, no channel names
+                                        // This buffer is not time-dependent, see TEFloatBuffer.h for handling time-dependent samples such
+                                        // as audio.
+                                        buffer = TEFloatBufferCreateTimeDependent(44100, 2, 44100 / 2, nullptr);
+                                        myAudioSamples = 0;
 
-									result = TEInstanceLinkSetFloatBufferValue(myInstance, info->identifier, buffer);
+                                    }
+                                    TEFloatBufferSetExtend(buffer, static_cast<TEFloatBufferExtend>(0),
+                                                           static_cast<TEFloatBufferExtend>(0), 0);
+                                    auto value = generate500HzSinusoid(44100 / FramesPerSecond, myAudioSamples % 44100);
+                                    std::array<const float *, 2> channels{value, value};
+                                    TEFloatBufferSetValues(buffer, channels.data(), 1);
+                                    TEFloatBufferSetStartTime(buffer, myAudioSamples);
+                                    myAudioSamples += 44100 / FramesPerSecond;
+                                    result = TEInstanceLinkAddFloatBuffer(myInstance, info->identifier, buffer);
 
-									TERelease(&buffer);
-								}
+                                    TERelease(&buffer);
+                                    delete[] value;
+                                }
 								break;
 							}
 							case TELinkTypeStringData:
@@ -771,7 +795,6 @@ DocumentWindow::update()
 
 		setInFrame(true);
 
-		int64_t time = getRenderTime();
 		myLastResult = TEInstanceStartFrameAtTime(myInstance, time, TimeRate, false);
 		if (myLastResult == TEResultSuccess)
 		{

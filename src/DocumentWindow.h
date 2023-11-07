@@ -110,5 +110,7 @@ private:
 	std::map<std::string, size_t>	myOutputLinkTextureMap;
 	std::vector<std::string>		myPendingOutputTextures;
 	bool							myPendingLayoutChange;
+
+	int64_t myAudioSamples = 0;
 };
 
