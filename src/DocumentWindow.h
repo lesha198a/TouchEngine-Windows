@@ -78,7 +78,8 @@ private:
 	static constexpr int32_t FramesPerSecond{ 60 };
 	static constexpr int32_t TimeRate{ 6000 };
 	static constexpr UINT	 InitialWindowWidth{ 640 };
-	static constexpr UINT	 InitialWindowHeight{ 480 };
+    static constexpr UINT	 InitialWindowHeight{ 480 };
+    static constexpr int32_t AudioSizeLimit{ 2000 };
 
 	static constexpr unsigned int ImageWidth{ 256 };
 	static constexpr unsigned int ImageHeight{ 256 };
@@ -112,5 +113,9 @@ private:
 	bool							myPendingLayoutChange;
 
 	int64_t myAudioSamples = 0;
+	int64_t myPrevRenderTime = 0;
+	bool mySoundState = false;
+	double myPrevAudioSamplesCount = 0;
+	int mySecCounter = 0;
 };
 

@@ -626,31 +626,35 @@ DocumentWindow::linkLayoutDidChange()
 #define _USE_MATH_DEFINES
 #include <math.h>
 
-float* generate500HzSinusoid(int samples, int offset) {
+void generate500HzSinusoid(float *sinusoid, int samples, int offset, bool on) {
     if (samples <= 0) {
-        return nullptr;
+        return;
     }
 
-    auto* sinusoid = new float[samples];
+    if (!on) {
+        for (int k = 0; k < samples; ++k) {
+            sinusoid[k] = 0;
+        }
+        return;
+    }
     float frequency = 500.0f;
 
     for (int i = 0; i < samples; ++i) {
         float t = static_cast<float>(i + offset) / 44100;
         sinusoid[i] = std::sinf(2.0f * float(M_PI) * frequency * t);
     }
-
-    return sinusoid;
 }
 
+#include <iostream>
+
 void
-DocumentWindow::update()
-{
-	bool loaded, linksChanged, inFrame;
-	getState(loaded, linksChanged, inFrame);
+DocumentWindow::update() {
+    bool loaded, linksChanged, inFrame;
+    getState(loaded, linksChanged, inFrame);
 
-	bool changed = linksChanged;
+    bool changed = linksChanged;
 
-	// Make any pending renderer state updates
+    // Make any pending renderer state updates
 	if (linksChanged)
 	{
 		applyLayoutChange();
@@ -734,11 +738,33 @@ DocumentWindow::update()
                                     }
                                     TEFloatBufferSetExtend(buffer, static_cast<TEFloatBufferExtend>(0),
                                                            static_cast<TEFloatBufferExtend>(0), 0);
-                                    auto value = generate500HzSinusoid(44100 / FramesPerSecond, myAudioSamples % 44100);
+                                    double samplesElapsed = (double) (time - myPrevRenderTime) * 44100 / TimeRate;
+                                    double samplesToWrite = samplesElapsed + 44100 * 0.01;
+                                    double samplesLeft = myPrevAudioSamplesCount - samplesElapsed;
+                                    if (samplesLeft > 0 && samplesLeft < samplesToWrite) {
+//                                        std::cout << samplesElapsed << " " << samplesLeft <<std::endl;
+                                        samplesToWrite -= samplesLeft;
+                                    }
+                                    myPrevAudioSamplesCount = samplesToWrite;
+                                    myPrevRenderTime = time;
+//                                    samplesToWrite = samplesElapsed;
+                                    int secCounter = static_cast<int>(time / TimeRate) % 11;
+                                    if (secCounter != mySecCounter) {
+                                        std::cout << secCounter << " sec. | " << samplesToWrite << " samples"
+                                                  << std::endl;
+                                    }
+                                    mySecCounter = secCounter;
+                                    bool soundOn = mySecCounter > 5;
+                                    if (!mySoundState && soundOn) { std::cout << "On" << std::endl; }
+                                    if (mySoundState && !soundOn) { std::cout << "Off" << std::endl; }
+                                    mySoundState = soundOn;
+                                    auto *value = new float[(int) samplesToWrite];
+                                    generate500HzSinusoid(value, (int) samplesToWrite,
+                                                          (int) myAudioSamples % 44100, soundOn);
                                     std::array<const float *, 2> channels{value, value};
-                                    TEFloatBufferSetValues(buffer, channels.data(), 1);
+                                    TEFloatBufferSetValues(buffer, channels.data(), (int) samplesToWrite);
                                     TEFloatBufferSetStartTime(buffer, myAudioSamples);
-                                    myAudioSamples += 44100 / FramesPerSecond;
+                                    myAudioSamples += (int) samplesToWrite;
                                     result = TEInstanceLinkAddFloatBuffer(myInstance, info->identifier, buffer);
 
                                     TERelease(&buffer);
